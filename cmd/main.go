@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"image"
 	"image/png"
+	_ "image/jpeg"
 	"log"
 	"os"
 
