@@ -54,7 +54,7 @@ func decode(img image.Image) ([]uint8, error) {
     bounds := img.Bounds()
     var collectedBits []uint8
 
-    var header StegoHeader
+    var header stegoHeader
     hasHeader := false
     totalBitsNeeded := HeaderTotalSize // Начальная цель — прочитать заголовк
 

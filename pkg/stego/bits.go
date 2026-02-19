@@ -8,7 +8,7 @@ const (
 	MagicValue       = 0x4454 // "DT" в HEX
 )
 
-type StegoHeader struct {
+type stegoHeader struct {
 	Magic  uint16
 	Length uint32
 }
