@@ -35,7 +35,10 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			stegoImg := stego.HideMessage([]byte(*msg), img)
+			stegoImg, err := stego.HideMessage([]byte(*msg), img)
+			if err != nil {
+				log.Fatal(err)
+			}
 			err = saveImg(*outputPath, stegoImg)
 			if err != nil {
 				log.Fatal(err)
@@ -47,7 +50,11 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			res := stego.ExtractMessage(img)
+			res, err := stego.ExtractMessage(img)
+			if err != nil {
+				fmt.Println("Не удалось извлечь сообщение:", err)
+				return
+			}
 			fmt.Printf("🔓 Извлеченное сообщение: %s\n", string(res))
 
 		default:

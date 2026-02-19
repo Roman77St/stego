@@ -3,6 +3,7 @@
 package stego
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 )
@@ -47,15 +48,15 @@ func encode(img image.Image, messageBits []uint8) *image.RGBA {
 }
 
 // Decode извлекает скрытые биты из изображения.
-// Сначала читаются первые 32 бита для определения длины сообщения,
+// Сначала читается заголовок для определения наличия и длины сообщения,
 // затем извлекается само тело сообщения.
-func decode(img image.Image) []uint8 {
+func decode(img image.Image) ([]uint8, error) {
     bounds := img.Bounds()
     var collectedBits []uint8
 
-    var messageLength uint32
-    hasLength := false
-    totalBitsNeeded := 32 // Начальная цель — прочитать 32 бита заголовка
+    var header StegoHeader
+    hasHeader := false
+    totalBitsNeeded := HeaderTotalSize // Начальная цель — прочитать заголовк
 
     for y := bounds.Min.Y; y < bounds.Max.Y; y++ {
         for x := bounds.Min.X; x < bounds.Max.X; x++ {
@@ -68,25 +69,30 @@ func decode(img image.Image) []uint8 {
                     // Собираем LSB из текущего канала
                     collectedBits = append(collectedBits, getLSB(ch))
 
-                    // Как только получили первые 32 бита — вычисляем общую длину
-                    if !hasLength && len(collectedBits) == 32 {
-                        messageLength = bitsToUint32(collectedBits)
+                    // Как только получили заголовок — проверяем наличие сообщения и вычисляем общую длину
+                    if !hasHeader && len(collectedBits) == HeaderTotalSize {
+                        header.Magic = uint16(bitsToUint(collectedBits[:HeaderMagicSize]))
+						header.Length = uint32(bitsToUint(collectedBits[HeaderMagicSize:HeaderTotalSize]))
+                        // 1. Проверка флага: если магическое число не совпало, это не наше сообщение
+						if header.Magic != MagicValue {
+							return nil, fmt.Errorf("steganography header not found (invalid magic)")
+						}
+                        // 2. Валидация длины по емкости картинки
+						if int(header.Length) > maxCapacity(img) {
+							return nil, fmt.Errorf("invalid message length in header")
+						}
                         // Рассчитываем итоговое количество бит: заголовок + тело
-                        totalBitsNeeded = 32 + int(messageLength*8)
-                        hasLength = true
+                        totalBitsNeeded = HeaderTotalSize + int(header.Length*8)
+                        hasHeader = true
                     }
                 } else {
                     // Если собрали всё необходимое, возвращаем биты без заголовка
-                    return collectedBits[32:]
+                    return collectedBits[HeaderTotalSize:], nil
                 }
             }
         }
     }
-    // На случай, если картинка закончилась раньше, чем мы собрали всё сообщение
-    if len(collectedBits) > 32 {
-        return collectedBits[32:]
-    }
-    return nil
+    return nil, fmt.Errorf("unexpected end of image data")
 }
 
 // setLSB заменяет последний бит в байте цветового канала на нужный бит сообщения.
@@ -104,12 +110,16 @@ func getLSB(color uint8) uint8 {
     return color & 1
 }
 
-// bitsToUint32 превращает срез из 32 бит обратно в целое число (длину сообщения).
-func bitsToUint32(bits []uint8) uint32 {
-    var res uint32
-    for i := range 32 {
-        // Сдвигаем результат влево и добавляем текущий бит
-        res = (res << 1) | uint32(bits[i])
+// MaxBytesCapacity возвращает максимальное количество байт,
+// которое можно скрыть в изображении (за вычетом заголовка).
+func maxCapacity(img image.Image) int {
+    bounds := img.Bounds()
+    // Всего доступно бит: W * H * 3 канала
+    totalBits := bounds.Dx() * bounds.Dy() * 3
+
+    // Вычитаем длину заголовока и переводим в байты
+    if totalBits < HeaderTotalSize {
+        return 0
     }
-    return res
+    return (totalBits - HeaderTotalSize) / 8
 }

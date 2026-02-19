@@ -1,6 +1,17 @@
 // файл отвечает за низкоуровневую трансформацию данных: преобразование байтов сообщения в поток бит
-
 package stego
+
+const (
+	HeaderMagicSize  = 16 // 16 бит для флага "есть сообщение"
+	HeaderLengthSize = 32 // 32 бита для длины
+	HeaderTotalSize  = HeaderMagicSize + HeaderLengthSize
+	MagicValue       = 0x4454 // "DT" в HEX
+)
+
+type StegoHeader struct {
+	Magic  uint16
+	Length uint32
+}
 
 // MessageToBits принимает срез байт (сообщение) и разворачивает его в поток бит.
 // Каждый байт превращается в 8 элементов среза uint8, где каждый элемент — это 0 или 1.
@@ -49,53 +60,44 @@ func bitsToMessage(bits []uint8) []byte {
     return result
 }
 
-// LengthToBits преобразует число типа uint32 (длину сообщения) в срез из 32 бит.
-// Это позволяет упаковать метаданные о размере данных перед самим сообщением.
-func lengthToBits(length uint32) []uint8 {
-	// Разбиваем 32-битное число на 4 байта (Big Endian).
-    buf := make([]byte, 4)
-    // Записываем число в байты (Big Endian - от старшего к младшему)
-    buf[0] = uint8(length >> 24) // Старшие 8 бит
-    buf[1] = uint8(length >> 16)
-    buf[2] = uint8(length >> 8)
-    buf[3] = uint8(length)       // Младшие 8 бит
-
-    // Теперь превращаем эти 4 байта в 32 бита
-    return messageToBits(buf)
-}
-
 // PrepareData формирует итоговый массив бит для записи в изображение.
-// Пакет состоит из 32 бит заголовка (длина) и битов самого сообщения.
+// Собирает пакет: [Magic (16bit)] + [Length (32bit)] + [Payload]
 func prepareData(message []byte) []uint8 {
 	length := uint32(len(message))
 
-	// 1. Кодируем длину сообщения в 32 бита (заголовок).
-	lengthBits := lengthToBits(length)
+	// Кодируем Magic Value (16 бит)
+	magicBits := uintToBits(uint64(MagicValue), HeaderMagicSize)
 
-	// 2. Кодируем само содержание сообщения в биты.
+	// Кодируем длину сообщения в 32 бита.
+	lengthBits := uintToBits(uint64(length), HeaderLengthSize)
+
+	// Кодируем само содержание сообщения в биты.
 	messageBits := messageToBits(message)
 
-	// 3. Соединяем их: заголовок всегда идет первым.
+	// Соединяем их: заголовок всегда идет первым.
 	// Оптимизация: заранее выделяем точный объем памяти
-    finalBits := make([]uint8, 0, len(lengthBits)+len(messageBits))
+    finalBits := make([]uint8, 0, HeaderTotalSize + len(messageBits))
+    finalBits = append(finalBits, magicBits...)
     finalBits = append(finalBits, lengthBits...)
     finalBits = append(finalBits, messageBits...)
 
 	return finalBits
 }
 
-// TODO Возможно понадобятся другие заголовки.
-// Для них можно использовать структуру типа:
-//
-// type Header struct {
-//     Size    uint32
-//     Version uint8
-//     // Можно добавить еще поля
-// }
-// 
-// // Новая функция-агрегатор
-// func (h Header) Serialize() []uint8 {
-//     var headerBytes []byte
-//     // Упаковываем все поля в байты...
-//     return MessageToBits(headerBytes)
-// }
+// Универсальная функция для превращения бит в число любого размера
+func bitsToUint(bits []uint8) uint64 {
+	var res uint64
+	for _, b := range bits {
+		res = (res << 1) | uint64(b)
+	}
+	return res
+}
+
+// Функция для превращения любого uint в биты заданного размера
+func uintToBits(val uint64, size int) []uint8 {
+	bits := make([]uint8, size)
+	for i := range size {
+		bits[size-1-i] = uint8((val >> i) & 1)
+	}
+	return bits
+}
