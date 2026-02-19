@@ -7,11 +7,26 @@ import (
 )
 
 func RunCLI() error {
-	mode := flag.String("mode", "decode", "режим работы: encode или decode")
-	input := flag.String("input", "input.png", "путь к входному изображению")
-	output := flag.String("output", "output.png", "путь для сохранения (только для encode)")
-	msg := flag.String("msg", "", "сообщение для записи (только для encode)")
-	// help := flag.String("help", "", "использование утилиты")
+
+	helpMessage := `
+Stego Tool — утилита для скрытия текста в изображениях (LSB)
+
+Использование:
+  stego -mode encode -input <file> -output <file> -msg <text>
+  stego -mode decode -input <file>
+
+Флаги:
+
+`
+	flag.Usage = func() {
+		fmt.Fprint(os.Stderr, helpMessage)
+		flag.PrintDefaults()
+	}
+
+	mode := flag.String("mode", "", "Режим работы: encode или decode (обязательно)")
+	input := flag.String("input", "", "Путь к входному изображению (обязательно)")
+	output := flag.String("output", "output.png", "Путь для сохранения результата (только для encode)")
+	msg := flag.String("msg", "", "Сообщение для сокрытия (только для encode)")
 	flag.Parse()
 
 	if len(os.Args) < 2 {
@@ -21,16 +36,24 @@ func RunCLI() error {
 
 	switch *mode {
 	case "encode":
-		if err := RunEncode(*input, *output, *msg); err != nil {
-			return err
+		if *msg == "" {
+			return fmt.Errorf("❌ Ошибка: сообщение (-msg) не может быть пустым для режима encode")
 		}
-		fmt.Println("✅ Готово!")
+		if err := RunEncode(*input, *output, *msg); err != nil {
+			return fmt.Errorf("❌ Ошибка при кодировании: %v", err)
+		}
+		fmt.Printf("✅ Успех! Сообщение спрятано в: %s\n", *output)
+
 	case "decode":
 		res, err := RunDecode(*input)
 		if err != nil {
-			return err
+			return fmt.Errorf("❌ Ошибка при декодировании: %v", err)
 		}
-		fmt.Printf("🔓 Сообщение: %s\n", res)
+		fmt.Printf("🔓 Извлечено сообщение:\n---\n%s\n---\n", res)
+
+	default:
+		flag.Usage()
+		return fmt.Errorf("❌ Неизвестный режим: %s", *mode)
 	}
 	return nil
 }

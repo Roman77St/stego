@@ -4,6 +4,7 @@ package stego
 
 import (
 	"fmt"
+	"hash/crc32"
 	"image"
 	"image/color"
 )
@@ -72,7 +73,8 @@ func decode(img image.Image) ([]uint8, error) {
                     // Как только получили заголовок — проверяем наличие сообщения и вычисляем общую длину
                     if !hasHeader && len(collectedBits) == HeaderTotalSize {
                         header.Magic = uint16(bitsToUint(collectedBits[:HeaderMagicSize]))
-						header.Length = uint32(bitsToUint(collectedBits[HeaderMagicSize:HeaderTotalSize]))
+						header.Length = uint32(bitsToUint(collectedBits[HeaderMagicSize:HeaderMagicSize + HeaderLengthSize]))
+                        header.CRC = uint32(bitsToUint(collectedBits[HeaderMagicSize+HeaderLengthSize : HeaderTotalSize]))
                         // 1. Проверка флага: если магическое число не совпало, это не наше сообщение
 						if header.Magic != MagicValue {
 							return nil, fmt.Errorf("steganography header not found (invalid magic)")
@@ -86,8 +88,19 @@ func decode(img image.Image) ([]uint8, error) {
                         hasHeader = true
                     }
                 } else {
-                    // Если собрали всё необходимое, возвращаем биты без заголовка
-                    return collectedBits[HeaderTotalSize:], nil
+                    // Извлекаем тело сообщения
+					payloadBits := collectedBits[HeaderTotalSize:]
+
+					// ПРОВЕРКА КОНТРОЛЬНОЙ СУММЫ
+					// Превращаем биты обратно в байты для расчета CRC
+					payloadBytes := bitsToMessage(payloadBits)
+					actualCRC := crc32.ChecksumIEEE(payloadBytes)
+
+					if actualCRC != header.CRC {
+						return nil, fmt.Errorf("данные повреждены: контрольная сумма не совпадает")
+					}
+
+					return payloadBits, nil
                 }
             }
         }

@@ -1,16 +1,20 @@
 // файл отвечает за низкоуровневую трансформацию данных: преобразование байтов сообщения в поток бит
 package stego
 
+import "hash/crc32"
+
 const (
 	HeaderMagicSize  = 16 // 16 бит для флага "есть сообщение"
 	HeaderLengthSize = 32 // 32 бита для длины
-	HeaderTotalSize  = HeaderMagicSize + HeaderLengthSize
+	HeaderCRCSize    = 32 // 32 бита для чек-суммы
+	HeaderTotalSize  = HeaderMagicSize + HeaderLengthSize + HeaderCRCSize
 	MagicValue       = 0x4454 // "DT" в HEX
 )
 
 type stegoHeader struct {
-	Magic  uint16
-	Length uint32
+	Magic   uint16 // Флаг наличия сообщения
+	Length  uint32 // Длина сообщения
+	CRC     uint32 // Контрольная сумма данных
 }
 
 // MessageToBits принимает срез байт (сообщение) и разворачивает его в поток бит.
@@ -65,11 +69,17 @@ func bitsToMessage(bits []uint8) []byte {
 func prepareData(message []byte) []uint8 {
 	length := uint32(len(message))
 
+	// Рассчитываем контрольную сумму самого сообщения
+	checksum := crc32.ChecksumIEEE(message)
+
 	// Кодируем Magic Value (16 бит)
 	magicBits := uintToBits(uint64(MagicValue), HeaderMagicSize)
 
 	// Кодируем длину сообщения в 32 бита.
 	lengthBits := uintToBits(uint64(length), HeaderLengthSize)
+
+ 	// Кодируем CRC
+	crcBits := uintToBits(uint64(checksum), HeaderCRCSize)
 
 	// Кодируем само содержание сообщения в биты.
 	messageBits := messageToBits(message)
@@ -79,6 +89,7 @@ func prepareData(message []byte) []uint8 {
     finalBits := make([]uint8, 0, HeaderTotalSize + len(messageBits))
     finalBits = append(finalBits, magicBits...)
     finalBits = append(finalBits, lengthBits...)
+	finalBits = append(finalBits, crcBits...)
     finalBits = append(finalBits, messageBits...)
 
 	return finalBits
